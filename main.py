@@ -56,10 +56,10 @@ class GetKeys:
         for base_url_key in self.base_urls:
             keys_data += f"""
 [{base_url_key}]
-client_key = "{self.client_key}"
-authorization_key = "{self.auth_keys.get(base_url_key, 'N/A')}"
-private_key = "{self.private_key}"
-public_key = "{self.public_keys.get(base_url_key, 'N/A')}"
+Client-key = "{self.client_key}"
+Authorization-key = "{self.auth_keys.get(base_url_key, 'N/A')}"
+Private-key = "{self.private_key}"
+Public-key = "{self.public_keys.get(base_url_key, 'N/A')}"
 """
         with open("data/keys.txt", "w") as file:
             file.write(keys_data)
@@ -83,7 +83,9 @@ base_urls = {
     "External_AM": os.getenv("BASE_URL1"),
     "External_ST": os.getenv("BASE_URL2"),
     "Internal_AM": os.getenv("BASE_URL3"),
-    "Internal_ST": os.getenv("BASE_URL4")
+    "Internal_ST": os.getenv("BASE_URL4"),
+    "Pro_ST": os.getenv("BASE_URL5"),
+    "Pro_AM": os.getenv("BASE_URL6")
 }
 
 keys_api_client = GetKeys(base_urls)
@@ -104,10 +106,10 @@ app.add_middleware(
 async def get_keys():
     return {
         base_url_key: {
-            "client_key": keys_api_client.client_key,
-            "authorization_key": keys_api_client.auth_keys.get(base_url_key),
-            "private_key": keys_api_client.private_key,
-            "public_key": keys_api_client.public_keys.get(base_url_key)
+            "Client-key": keys_api_client.client_key,
+            "Authorization-key": keys_api_client.auth_keys.get(base_url_key),
+            "Private-key": keys_api_client.private_key,
+            "Public-key": keys_api_client.public_keys.get(base_url_key)
         } for base_url_key in base_urls
     }
 
