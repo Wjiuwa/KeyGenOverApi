@@ -3,7 +3,7 @@ import requests
 import hashlib
 import time
 from dotenv import load_dotenv
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Optional
 import asyncio
@@ -112,6 +112,8 @@ async def get_keys():
             "Public-key": keys_api_client.public_keys.get(base_url_key)
         } for base_url_key in base_urls
     }
+
+
 
 async def refresh_keys():
     while True:
