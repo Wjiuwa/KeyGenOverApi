@@ -185,13 +185,13 @@ async def get_matrix_style_numbers():
         <div class="half">
             <canvas id="matrixCanvasST"></canvas>
             <div class="status" id="statusDivST">
-                Pro_ST Status: <span id="proStStatus">Loading...</span>
+                ST Status: <span id="proStStatus">Loading...</span>
             </div>
         </div>
         <div class="half">
             <canvas id="matrixCanvasAM"></canvas>
             <div class="status" id="statusDivAM">
-                Pro_AM Status: <span id="proAmStatus">Loading...</span>
+                AM Status: <span id="proAmStatus">Loading...</span>
             </div>
         </div>
         <script>
