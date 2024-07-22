@@ -2,13 +2,13 @@ import os
 import requests
 import hashlib
 import random
-from fastapi.responses import HTMLResponse
 import time
-from dotenv import load_dotenv
+import asyncio
 from fastapi import FastAPI, Response
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Optional
-import asyncio
+from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
@@ -104,8 +104,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-
 @app.get("/keys")
 async def get_keys():
     return {
@@ -120,13 +118,6 @@ async def get_keys():
 @app.get("/favicon.ico")
 async def favicon():
     return Response(status_code=204)  # No Content
-
-
-
-
-
-
-
 
 @app.get("/", response_class=HTMLResponse)
 async def get_matrix_style_numbers():
@@ -180,7 +171,7 @@ async def get_matrix_style_numbers():
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                ctx.fillStyle = '#0F0';
+                ctx.fillStyle = document.body.style.color || '#0F0';
                 ctx.font = fontSize + 'px monospace';
 
                 for (let i = 0; i < drops.length; i++) {
@@ -196,6 +187,27 @@ async def get_matrix_style_numbers():
             }
 
             setInterval(draw, 33);
+
+            async function fetchAPIStatus() {
+                try {
+                    document.body.style.color = 'yellow'; // Change to yellow during the call
+                    const response = await fetch('/api_status');
+                    const data = await response.json();
+                    if (data.status === 'success') {
+                        document.body.style.color = 'green'; // Change to green on success
+                    } else {
+                        document.body.style.color = 'red'; // Change to red on failure
+                    }
+                } catch (error) {
+                    document.body.style.color = 'pink'; // Change to red on error
+                }
+            }
+
+            // Call the function every 20 seconds
+            setInterval(fetchAPIStatus, 20000);
+
+            // Initial call to set the color at the start
+            fetchAPIStatus();
         </script>
     </body>
     </html>
@@ -203,18 +215,16 @@ async def get_matrix_style_numbers():
     return HTMLResponse(content=html_content)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
+@app.get("/api_status")
+async def get_api_status():
+    try:
+        response = requests.get(f"{base_urls["Pro_ST"]}/GetAPIStatus/", timeout=30)  # Ensure the correct endpoint
+        if response.status_code == 200 and response.json().get("status") == "success":
+            return {"status": "success"}
+        else:
+            return {"status": "failure"}
+    except requests.RequestException:
+        return {"status": "failure"}
 
 async def refresh_keys():
     while True:
