@@ -132,7 +132,7 @@ async def get_api_status_pro_st():
 @app.get("/api_status/pro_am")
 async def get_api_status_pro_am():
     try:
-        response = requests.get(f"{base_urls['Pro_AM']}/GetAPIStatu/", timeout=30)  # Ensure the correct endpoint
+        response = requests.get(f"{base_urls['Pro_AM']}/GetAPIStatus/", timeout=30)  # Ensure the correct endpoint
         if response.status_code == 200 and response.json().get("status") == "success":
             return {"status": "success"}
         else:
