@@ -1,7 +1,6 @@
 import os
 import requests
 import hashlib
-import random
 import time
 import asyncio
 from fastapi import FastAPI, Response
@@ -119,9 +118,31 @@ async def get_keys():
 async def favicon():
     return Response(status_code=204)  # No Content
 
+@app.get("/api_status/pro_st")
+async def get_api_status_pro_st():
+    try:
+        response = requests.get(f"{base_urls['Pro_ST']}/GetAPIStatus/", timeout=30)  # Ensure the correct endpoint
+        if response.status_code == 200 and response.json().get("status") == "success":
+            return {"status": "success"}
+        else:
+            return {"status": "failure"}
+    except requests.RequestException:
+        return {"status": "failure"}
+
+@app.get("/api_status/pro_am")
+async def get_api_status_pro_am():
+    try:
+        response = requests.get(f"{base_urls['Pro_AM']}/GetAPIStatu/", timeout=30)  # Ensure the correct endpoint
+        if response.status_code == 200 and response.json().get("status") == "success":
+            return {"status": "success"}
+        else:
+            return {"status": "failure"}
+    except requests.RequestException:
+        return {"status": "failure"}
+
 @app.get("/", response_class=HTMLResponse)
 async def get_matrix_style_numbers():
-    html_content = """
+    html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -129,102 +150,116 @@ async def get_matrix_style_numbers():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Matrix Effect</title>
         <style>
-            body {
+            body {{
                 margin: 0;
-                overflow: hidden;
-                background: black;
-                color: #0F0;
-                font-family: monospace;
                 display: flex;
+                flex-direction: row;
                 justify-content: center;
                 align-items: center;
                 height: 100vh;
-            }
-            canvas {
+                background: black;
+                color: #0F0;
+                font-family: monospace;
+            }}
+            .half {{
+                width: 50%;
+                height: 100%;
+                position: relative;
+            }}
+            .status {{
+                position: absolute;
+                top: 20px;
+                left: 20px;
+                color: white;
+                font-size: 20px;
+                background-color: rgba(0, 0, 0, 0.7);
+                padding: 10px;
+                border-radius: 5px;
+            }}
+            canvas {{
                 display: block;
-            }
+            }}
         </style>
     </head>
     <body>
-        <canvas id="matrixCanvas"></canvas>
+        <div class="half">
+            <canvas id="matrixCanvasST"></canvas>
+            <div class="status" id="statusDivST">
+                Pro_ST Status: <span id="proStStatus">Loading...</span>
+            </div>
+        </div>
+        <div class="half">
+            <canvas id="matrixCanvasAM"></canvas>
+            <div class="status" id="statusDivAM">
+                Pro_AM Status: <span id="proAmStatus">Loading...</span>
+            </div>
+        </div>
         <script>
-            const canvas = document.getElementById('matrixCanvas');
-            const ctx = canvas.getContext('2d');
+            function createMatrixEffect(canvasId, statusId, apiEndpoint) {{
+                const canvas = document.getElementById(canvasId);
+                const ctx = canvas.getContext('2d');
 
-            // Make the canvas full screen
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+                canvas.width = window.innerWidth / 2;
+                canvas.height = window.innerHeight;
 
-            // Characters - array of characters to be used
-            const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-            const fontSize = 14;
-            const columns = canvas.width / fontSize;
+                const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+                const fontSize = 14;
+                const columns = canvas.width / fontSize;
+                const drops = [];
+                for (let x = 0; x < columns; x++) {{
+                    drops[x] = 1;
+                }}
 
-            // An array of drops - one per column
-            const drops = [];
-            for (let x = 0; x < columns; x++) {
-                drops[x] = 1;
-            }
+                function draw() {{
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Draw the characters
-            function draw() {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = canvas.style.color || '#0F0';
+                    ctx.font = fontSize + 'px monospace';
 
-                ctx.fillStyle = document.body.style.color || '#0F0';
-                ctx.font = fontSize + 'px monospace';
+                    for (let i = 0; i < drops.length; i++) {{
+                        const text = chars.charAt(Math.floor(Math.random() * chars.length));
+                        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
 
-                for (let i = 0; i < drops.length; i++) {
-                    const text = chars.charAt(Math.floor(Math.random() * chars.length));
-                    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {{
+                            drops[i] = 0;
+                        }}
 
-                    if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
-                        drops[i] = 0;
-                    }
+                        drops[i]++;
+                    }}
+                }}
 
-                    drops[i]++;
-                }
-            }
+                setInterval(draw, 33);
 
-            setInterval(draw, 33);
+                async function fetchAPIStatus() {{
+                    try {{
+                        canvas.style.color = 'yellow'; // Change to yellow during the call
+                        const response = await fetch(apiEndpoint);
+                        const data = await response.json();
+                        document.getElementById(statusId).textContent = data.status;
 
-            async function fetchAPIStatus() {
-                try {
-                    document.body.style.color = 'yellow'; // Change to yellow during the call
-                    const response = await fetch('/api_status');
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        document.body.style.color = 'green'; // Change to green on success
-                    } else {
-                        document.body.style.color = 'red'; // Change to red on failure
-                    }
-                } catch (error) {
-                    document.body.style.color = 'pink'; // Change to red on error
-                }
-            }
+                        if (data.status === 'success') {{
+                            canvas.style.color = 'green';
+                        }} else {{
+                            canvas.style.color = 'red';
+                        }}
+                    }} catch (error) {{
+                        document.getElementById(statusId).textContent = 'error';
+                        canvas.style.color = 'pink';
+                    }}
+                }}
 
-            // Call the function every 20 seconds
-            setInterval(fetchAPIStatus, 20000);
+                setInterval(fetchAPIStatus, 20000);
+                fetchAPIStatus();
+            }}
 
-            // Initial call to set the color at the start
-            fetchAPIStatus();
+            createMatrixEffect('matrixCanvasST', 'proStStatus', '/api_status/pro_st');
+            createMatrixEffect('matrixCanvasAM', 'proAmStatus', '/api_status/pro_am');
         </script>
     </body>
     </html>
     """
     return HTMLResponse(content=html_content)
-
-
-@app.get("/api_status")
-async def get_api_status():
-    try:
-        response = requests.get(f"{base_urls["Pro_ST"]}/GetAPIStatus/", timeout=30)  # Ensure the correct endpoint
-        if response.status_code == 200 and response.json().get("status") == "success":
-            return {"status": "success"}
-        else:
-            return {"status": "failure"}
-    except requests.RequestException:
-        return {"status": "failure"}
 
 async def refresh_keys():
     while True:
