@@ -52,6 +52,7 @@ class GetKeys:
         self.save_keys_to_file()
         return self.auth_keys[base_url_key]
 
+    #To save keys locally
     def save_keys_to_file(self):
         keys_data = ""
         for base_url_key in self.base_urls:
