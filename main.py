@@ -48,7 +48,6 @@ class GetKeys:
             return None
         data = self.public_keys[base_url_key] + self.client_key + self.private_key
         self.auth_keys[base_url_key] = hashlib.sha256(data.encode()).hexdigest()
-        self.last_key_generation_time[base_url_key] = time.time()
         self.save_keys_to_file()
         return self.auth_keys[base_url_key]
 
@@ -66,10 +65,7 @@ Public-key = "{self.public_keys.get(base_url_key, 'N/A')}"
             file.write(keys_data)
 
     def make_request(self, base_url_key: str, endpoint: str):
-        if (
-            self.last_key_generation_time.get(base_url_key) is None
-            or time.time() - self.last_key_generation_time[base_url_key] >= 1800
-        ):
+        if self.auth_keys.get(base_url_key) is None:
             self.generate_auth_key(base_url_key)
         if self.auth_keys.get(base_url_key) is None:
             return {"error": f"Failed to generate auth key for {base_url_key}"}
@@ -118,7 +114,6 @@ async def get_keys():
 async def favicon():
     return Response(status_code=204)  # No Content
 
-
 @app.get("/api_status/pro_st")
 async def get_api_status_pro_st():
     try:
@@ -130,8 +125,6 @@ async def get_api_status_pro_st():
             else:
                 return json_response  # Return the full response for other statuses
         else:
-            if response.status_code == 503:
-                return {"status": "Service Unavailable"}
             raise HTTPException(status_code=response.status_code, detail=response.text)
     except requests.RequestException as e:
         return {"status": "failure", "error": str(e)}
@@ -147,12 +140,29 @@ async def get_api_status_pro_am():
             else:
                 return json_response  # Return the full response for other statuses
         else:
-            if response.status_code == 503:
-                return {"status": "Service Unavailable"}
             raise HTTPException(status_code=response.status_code, detail=response.text)
     except requests.RequestException as e:
         return {"status": "failure", "error": str(e)}
 
+@app.get("/update_status")
+async def get_update_status():
+    try:
+        base_url_key = 'Internal_ST'
+        headers = {
+            "Authorization-Key": keys_api_client.auth_keys[base_url_key],
+            "Client-Key": keys_api_client.client_key
+        }
+        response = requests.get(f"{base_urls[base_url_key]}/GetUpdateStatus/", headers=headers, timeout=30)
+        if response.status_code == 200:
+            json_response = response.json()
+            if json_response.get("status") == "success":
+                return {"status": "success"}
+            else:
+                return {"status": "fail"}
+        else:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+    except requests.RequestException as e:
+        return {"status": "failure", "error": str(e)}
 
 @app.get("/")
 async def root():
@@ -196,7 +206,7 @@ async def root():
         </style>
     </head>
     <body>
-         <div class="half">
+        <div class="half">
             <canvas id="matrixCanvasST"></canvas>
             <div class="status" id="statusDivST">
                 ST Status: <span id="proStStatus">Loading...</span>
@@ -216,58 +226,55 @@ async def root():
                 canvas.width = window.innerWidth / 2;
                 canvas.height = window.innerHeight;
 
-                const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-                const fontSize = 14;
-                const columns = canvas.width / fontSize;
-                const drops = [];
-                for (let x = 0; x < columns; x++) {
-                    drops[x] = 1;
-                }
+                const columns = canvas.width / 20;
+                const rainDrops = Array(columns).fill(1);
 
-                function draw() {
+                const fontSize = 16;
+                const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+                function drawMatrix() {
                     ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                    ctx.fillStyle = canvas.style.color || '#0F0';
+                    ctx.fillStyle = '#0F0';
                     ctx.font = fontSize + 'px monospace';
 
-                    for (let i = 0; i < drops.length; i++) {
-                        const text = chars.charAt(Math.floor(Math.random() * chars.length));
-                        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                    for (let i = 0; i < rainDrops.length; i++) {
+                        const text = letters.charAt(Math.floor(Math.random() * letters.length));
+                        ctx.fillText(text, i * 20, rainDrops[i] * 20);
 
-                        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
-                            drops[i] = 0;
+                        if (rainDrops[i] * 20 > canvas.height && Math.random() > 0.975) {
+                            rainDrops[i] = 0;
                         }
-
-                        drops[i]++;
+                        rainDrops[i]++;
                     }
                 }
 
-                setInterval(draw, 33);
+                setInterval(drawMatrix, 30);
 
                 async function fetchAPIStatus() {
                     try {
-                        canvas.style.color = 'yellow'; // Change to yellow during the call
                         const response = await fetch(apiEndpoint);
                         const data = await response.json();
+                        const statusElement = document.getElementById(statusId);
+
                         if (data.status === "success") {
-                            document.getElementById(statusId).innerText = "Success";
-                            canvas.style.color = "#0F0";
-                        } else if (data.status === "Service Unavailable") {
-                            document.getElementById(statusId).innerText = "503 Service Unavailable";
-                            canvas.style.color = "#FFA500";
+                            statusElement.textContent = "Success";
+                            statusElement.style.color = "green";
+                        } else if (data.status === "fail" || data.status === "failure") {
+                            statusElement.textContent = "Failed";
+                            statusElement.style.color = "red";
                         } else {
-                            document.getElementById(statusId).innerText = "Failure";
-                            canvas.style.color = "#F00";
+                            statusElement.textContent = data.status;
+                            statusElement.style.color = "orange";
                         }
                     } catch (error) {
-                        document.getElementById(statusId).innerText = "Error";
-                        canvas.style.color = "#F00";
+                        console.error('Error fetching API status:', error);
                     }
                 }
 
-                setInterval(fetchAPIStatus, 20000);
-                fetchAPIStatus();
+                setInterval(fetchAPIStatus, 30000);  // Call every 30 seconds
+                fetchAPIStatus();  // Initial call
             }
 
             createMatrixEffect('matrixCanvasST', 'proStStatus', '/api_status/pro_st');
@@ -276,138 +283,33 @@ async def root():
     </body>
     </html>
     """
-    return HTMLResponse(content=html_content)
-    html_content = f"""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Matrix Effect</title>
-        <style>
-            body {{
-                margin: 0;
-                display: flex;
-                flex-direction: row;
-                justify-content: center;
-                align-items: center;
-                height: 100vh;
-                background: black;
-                color: #0F0;
-                font-family: monospace;
-            }}
-            .half {{
-                width: 50%;
-                height: 100%;
-                position: relative;
-            }}
-            .status {{
-                position: absolute;
-                top: 20px;
-                left: 20px;
-                color: white;
-                font-size: 20px;
-                background-color: rgba(0, 0, 0, 0.7);
-                padding: 10px;
-                border-radius: 5px;
-            }}
-            canvas {{
-                display: block;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="half">
-            <canvas id="matrixCanvasST"></canvas>
-            <div class="status" id="statusDivST">
-                Pro_ST Status: <span id="proStStatus">Loading...</span>
-            </div>
-        </div>
-        <div class="half">
-            <canvas id="matrixCanvasAM"></canvas>
-            <div class="status" id="statusDivAM">
-                Pro_AM Status: <span id="proAmStatus">Loading...</span>
-            </div>
-        </div>
-        <script>
-            function createMatrixEffect(canvasId, statusId, apiEndpoint) {{
-                const canvas = document.getElementById(canvasId);
-                const ctx = canvas.getContext('2d');
+    return HTMLResponse(content=html_content, status_code=200)
 
-                canvas.width = window.innerWidth / 2;
-                canvas.height = window.innerHeight;
-
-                const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-                const fontSize = 14;
-                const columns = canvas.width / fontSize;
-                const drops = [];
-                for (let x = 0; x < columns; x++) {{
-                    drops[x] = 1;
-                }}
-
-                function draw() {{
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                    ctx.fillStyle = canvas.style.color || '#0F0';
-                    ctx.font = fontSize + 'px monospace';
-
-                    for (let i = 0; i < drops.length; i++) {{
-                        const text = chars.charAt(Math.floor(Math.random() * chars.length));
-                        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
-
-                        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {{
-                            drops[i] = 0;
-                        }}
-
-                        drops[i]++;
-                    }}
-                }}
-
-                setInterval(draw, 33);
-
-                async function fetchAPIStatus() {{
-                    try {{
-                        canvas.style.color = 'yellow'; // Change to yellow during the call
-                        const response = await fetch(apiEndpoint);
-                        const data = await response.json();
-                        document.getElementById(statusId).textContent = data.status;
-
-                        if (data.status === 'success') {{
-                            canvas.style.color = 'green';
-                        }} else if (data.title === 'Service Unavailable') {{
-                            canvas.style.color = 'orange';
-                        }} else {{
-                            canvas.style.color = 'red';
-                        }}
-                    }} catch (error) {{
-                        document.getElementById(statusId).textContent = 'error';
-                        canvas.style.color = 'pink';
-                    }}
-                }}
-
-                setInterval(fetchAPIStatus, 20000);
-                fetchAPIStatus();
-            }}
-
-            createMatrixEffect('matrixCanvasST', 'proStStatus', '/api_status/pro_st');
-            createMatrixEffect('matrixCanvasAM', 'proAmStatus', '/api_status/pro_am');
-        </script>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=html_content)
-
-async def refresh_keys():
+async def check_and_update_keys():
     while True:
-        for base_url_key in base_urls:
-            keys_api_client.get_public_key(base_url_key)
-            keys_api_client.generate_auth_key(base_url_key)
-        await asyncio.sleep(1800)  # Sleep for 30 minutes
+        try:
+            base_url_key = 'Internal_ST'  # Assuming 'Internal_ST' is the key for GetUpdateStatus
+            if not keys_api_client.auth_keys.get(base_url_key):
+                keys_api_client.generate_auth_key(base_url_key)
+            
+            headers = {
+                "Authorization-Key": keys_api_client.auth_keys[base_url_key],
+                "Client-Key": keys_api_client.client_key
+            }
+            
+            response = requests.get(f"{base_urls[base_url_key]}/GetUpdateStatus/", headers=headers, timeout=30)
+            json_response = response.json()
+            if json_response.get("status") == "fail":
+                for base_url_key in base_urls:
+                    keys_api_client.get_public_key(base_url_key)
+                    keys_api_client.generate_auth_key(base_url_key)
+        except requests.RequestException as e:
+            print(f"An error occurred while checking the update status: {e}")
+        await asyncio.sleep(30)  # Sleep for 30 seconds
 
 @app.on_event("startup")
 async def on_startup():
-    asyncio.create_task(refresh_keys())
+    asyncio.create_task(check_and_update_keys())
 
 if __name__ == "__main__":
     import uvicorn
