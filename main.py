@@ -1,7 +1,6 @@
 import os
 import requests
 import hashlib
-import time
 import asyncio
 from fastapi import FastAPI, Response, HTTPException
 from fastapi.responses import HTMLResponse
@@ -18,7 +17,6 @@ class GetKeys:
         self.client_key = os.getenv("CLIENT_KEY")
         self.private_key = os.getenv("PRIVATE_KEY")
         self.auth_keys = {}
-        self.last_key_generation_time = {}
         self.public_keys = {}
 
     def get_public_key(self, base_url_key: str) -> Optional[str]:
@@ -125,6 +123,8 @@ async def get_api_status_pro_st():
             else:
                 return json_response  # Return the full response for other statuses
         else:
+            if response.status_code == 503:
+                return {"status": "Service Unavailable"}
             raise HTTPException(status_code=response.status_code, detail=response.text)
     except requests.RequestException as e:
         return {"status": "failure", "error": str(e)}
@@ -140,6 +140,8 @@ async def get_api_status_pro_am():
             else:
                 return json_response  # Return the full response for other statuses
         else:
+            if response.status_code == 503:
+                return {"status": "Service Unavailable"}
             raise HTTPException(status_code=response.status_code, detail=response.text)
     except requests.RequestException as e:
         return {"status": "failure", "error": str(e)}
@@ -206,7 +208,7 @@ async def root():
         </style>
     </head>
     <body>
-        <div class="half">
+         <div class="half">
             <canvas id="matrixCanvasST"></canvas>
             <div class="status" id="statusDivST">
                 ST Status: <span id="proStStatus">Loading...</span>
@@ -226,55 +228,58 @@ async def root():
                 canvas.width = window.innerWidth / 2;
                 canvas.height = window.innerHeight;
 
-                const columns = canvas.width / 20;
-                const rainDrops = Array(columns).fill(1);
+                const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+                const fontSize = 14;
+                const columns = canvas.width / fontSize;
+                const drops = [];
+                for (let x = 0; x < columns; x++) {
+                    drops[x] = 1;
+                }
 
-                const fontSize = 16;
-                const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-                function drawMatrix() {
+                function draw() {
                     ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                    ctx.fillStyle = '#0F0';
+                    ctx.fillStyle = canvas.style.color || '#0F0';
                     ctx.font = fontSize + 'px monospace';
 
-                    for (let i = 0; i < rainDrops.length; i++) {
-                        const text = letters.charAt(Math.floor(Math.random() * letters.length));
-                        ctx.fillText(text, i * 20, rainDrops[i] * 20);
+                    for (let i = 0; i < drops.length; i++) {
+                        const text = chars.charAt(Math.floor(Math.random() * chars.length));
+                        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
 
-                        if (rainDrops[i] * 20 > canvas.height && Math.random() > 0.975) {
-                            rainDrops[i] = 0;
+                        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                            drops[i] = 0;
                         }
-                        rainDrops[i]++;
+
+                        drops[i]++;
                     }
                 }
 
-                setInterval(drawMatrix, 30);
+                setInterval(draw, 33);
 
                 async function fetchAPIStatus() {
                     try {
+                        canvas.style.color = 'yellow'; // Change to yellow during the call
                         const response = await fetch(apiEndpoint);
                         const data = await response.json();
-                        const statusElement = document.getElementById(statusId);
-
                         if (data.status === "success") {
-                            statusElement.textContent = "Success";
-                            statusElement.style.color = "green";
-                        } else if (data.status === "fail" || data.status === "failure") {
-                            statusElement.textContent = "Failed";
-                            statusElement.style.color = "red";
+                            document.getElementById(statusId).innerText = "Success";
+                            canvas.style.color = "green";
+                        } else if (data.status === "Service Unavailable") {
+                            document.getElementById(statusId).innerText = "503 Service Unavailable";
+                            canvas.style.color = "orange";
                         } else {
-                            statusElement.textContent = data.status;
-                            statusElement.style.color = "orange";
+                            document.getElementById(statusId).innerText = "Failure";
+                            canvas.style.color = "red";
                         }
                     } catch (error) {
-                        console.error('Error fetching API status:', error);
+                        document.getElementById(statusId).innerText = "Error";
+                        canvas.style.color = "pink";
                     }
                 }
 
-                setInterval(fetchAPIStatus, 30000);  // Call every 30 seconds
-                fetchAPIStatus();  // Initial call
+                setInterval(fetchAPIStatus, 20000);
+                fetchAPIStatus();
             }
 
             createMatrixEffect('matrixCanvasST', 'proStStatus', '/api_status/pro_st');
@@ -288,18 +293,22 @@ async def root():
 async def check_and_update_keys():
     while True:
         try:
-            base_url_key = 'Internal_ST'  # Assuming 'Internal_ST' is the key for GetUpdateStatus
-            if not keys_api_client.auth_keys.get(base_url_key):
-                keys_api_client.generate_auth_key(base_url_key)
-            
+            # Check and generate auth keys for all base URLs
+            for base_url_key in base_urls:
+                if not keys_api_client.auth_keys.get(base_url_key):
+                    keys_api_client.generate_auth_key(base_url_key)
+
+            # Make request to get the update status using Internal_ST
+            base_url_key = 'Internal_ST'
             headers = {
                 "Authorization-Key": keys_api_client.auth_keys[base_url_key],
                 "Client-Key": keys_api_client.client_key
             }
-            
             response = requests.get(f"{base_urls[base_url_key]}/GetUpdateStatus/", headers=headers, timeout=30)
             json_response = response.json()
+
             if json_response.get("status") == "fail":
+                # Retrieve public keys and generate auth keys for all base URLs
                 for base_url_key in base_urls:
                     keys_api_client.get_public_key(base_url_key)
                     keys_api_client.generate_auth_key(base_url_key)
@@ -310,6 +319,7 @@ async def check_and_update_keys():
 @app.on_event("startup")
 async def on_startup():
     asyncio.create_task(check_and_update_keys())
+
 
 if __name__ == "__main__":
     import uvicorn
